@@ -79,11 +79,13 @@ func registerProviders(cfg *Config, registry *Registry) {
 	if cfg.Google != nil && cfg.Google.APIKey != "" {
 		registry.Register("google", NewGoogleAdapter(cfg.Google.APIKey))
 	}
+	if cfg.Perplexity != nil && cfg.Perplexity.APIKey != "" {
+		registry.Register("perplexity", NewPerplexityAdapter(cfg.Perplexity.APIKey))
+	}
 
 	builtInConfigs := map[string]*ProviderConfig{
 		"mistral": cfg.Mistral, "groq": cfg.Groq, "deepseek": cfg.DeepSeek,
 		"xai": cfg.XAI, "together": cfg.Together, "fireworks": cfg.Fireworks,
-		"perplexity": cfg.Perplexity,
 	}
 	for slug, pc := range builtInConfigs {
 		if pc != nil && pc.APIKey != "" {

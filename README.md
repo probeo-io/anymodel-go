@@ -142,6 +142,11 @@ client := am.New(&am.Config{
 | Perplexity | `PERPLEXITY_API_KEY` | Concurrent |
 | Ollama | `OLLAMA_BASE_URL` | Concurrent |
 
+## Also Available
+
+- **Node.js**: [`@probeo/anymodel`](https://github.com/probeo-io/anymodel) on npm
+- **Python**: [`anymodel-py`](https://github.com/probeo-io/anymodel-py) on PyPI
+
 ## License
 
 MIT

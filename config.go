@@ -169,5 +169,4 @@ var BuiltInProviders = map[string]string{
 	"xai":        "https://api.x.ai/v1",
 	"together":   "https://api.together.xyz/v1",
 	"fireworks":  "https://api.fireworks.ai/inference/v1",
-	"perplexity": "https://api.perplexity.ai",
 }
