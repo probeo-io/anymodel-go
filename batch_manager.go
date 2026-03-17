@@ -53,11 +53,13 @@ func (m *BatchManager) Create(ctx context.Context, req BatchCreateRequest) (*Bat
 	now := time.Now().Format(time.RFC3339)
 
 	mode := BatchConcurrent
-	m.mu.Lock()
-	_, hasNative := m.batchAdapters[parsed.Provider]
-	m.mu.Unlock()
-	if hasNative {
-		mode = BatchNative
+	if req.BatchMode != "concurrent" {
+		m.mu.Lock()
+		_, hasNative := m.batchAdapters[parsed.Provider]
+		m.mu.Unlock()
+		if hasNative {
+			mode = BatchNative
+		}
 	}
 
 	batch := BatchObject{

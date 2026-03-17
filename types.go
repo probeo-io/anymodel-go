@@ -302,10 +302,11 @@ type BatchCreateOptions struct {
 
 // BatchCreateRequest describes a new batch to create.
 type BatchCreateRequest struct {
-	Model    string             `json:"model"`
-	Requests []BatchRequestItem `json:"requests"`
-	Options  *BatchCreateOptions `json:"options,omitempty"`
-	Webhook  string             `json:"webhook,omitempty"`
+	Model     string             `json:"model"`
+	Requests  []BatchRequestItem `json:"requests"`
+	BatchMode string             `json:"batch_mode,omitempty"` // "native", "concurrent", or empty for auto-detect
+	Options   *BatchCreateOptions `json:"options,omitempty"`
+	Webhook   string             `json:"webhook,omitempty"`
 }
 
 // BatchObject is the metadata for a batch.
