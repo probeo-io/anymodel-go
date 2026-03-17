@@ -284,6 +284,7 @@ type BatchRequestItem struct {
 	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`
 	Tools          []Tool          `json:"tools,omitempty"`
 	ToolChoice     any             `json:"tool_choice,omitempty"`
+	ServiceTier    string          `json:"service_tier,omitempty"`
 }
 
 // BatchCreateOptions are shared options applied to all requests in a batch.
@@ -296,6 +297,7 @@ type BatchCreateOptions struct {
 	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`
 	Tools          []Tool          `json:"tools,omitempty"`
 	ToolChoice     any             `json:"tool_choice,omitempty"`
+	ServiceTier    string          `json:"service_tier,omitempty"`
 }
 
 // BatchCreateRequest describes a new batch to create.

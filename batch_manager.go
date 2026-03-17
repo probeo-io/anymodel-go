@@ -269,6 +269,11 @@ func (m *BatchManager) processConcurrentBatch(ctx context.Context, batchID strin
 			} else if options != nil && options.Temperature != nil {
 				completionReq.Temperature = options.Temperature
 			}
+			if item.ServiceTier != "" {
+				completionReq.ServiceTier = item.ServiceTier
+			} else if options != nil && options.ServiceTier != "" {
+				completionReq.ServiceTier = options.ServiceTier
+			}
 
 			result, err := adapter.SendRequest(ctx, completionReq)
 

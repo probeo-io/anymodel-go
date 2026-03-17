@@ -136,6 +136,7 @@ func (a *OpenAIBatchAdapter) buildJSONL(model string, requests []BatchRequestIte
 		if req.ToolChoice != nil {
 			body["tool_choice"] = req.ToolChoice
 		}
+		// service_tier intentionally omitted — native batch already gets 50% off
 
 		line := map[string]any{
 			"custom_id": req.CustomID,
