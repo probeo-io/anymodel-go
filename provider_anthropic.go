@@ -26,7 +26,7 @@ type AnthropicAdapter struct {
 
 // NewAnthropicAdapter creates an Anthropic provider adapter.
 func NewAnthropicAdapter(apiKey string) *AnthropicAdapter {
-	return &AnthropicAdapter{apiKey: apiKey, client: &http.Client{Timeout: 120 * time.Second}}
+	return &AnthropicAdapter{apiKey: apiKey, client: &http.Client{Timeout: GetDefaultHTTPTimeout()}}
 }
 
 func (a *AnthropicAdapter) Name() string                        { return "anthropic" }

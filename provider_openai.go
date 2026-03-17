@@ -17,6 +17,7 @@ var openaiSupportedParams = map[string]bool{
 	"seed": true, "stop": true, "stream": true,
 	"logprobs": true, "top_logprobs": true,
 	"response_format": true, "tools": true, "tool_choice": true, "user": true,
+	"service_tier": true,
 }
 
 // OpenAIAdapter implements the Adapter interface for OpenAI.
@@ -35,7 +36,7 @@ func NewOpenAIAdapter(apiKey string, baseURL string) *OpenAIAdapter {
 	return &OpenAIAdapter{
 		apiKey:  apiKey,
 		baseURL: strings.TrimRight(baseURL, "/"),
-		client:  &http.Client{Timeout: 120 * time.Second},
+		client:  &http.Client{}, // timeout controlled per-request via context
 		name:    "openai",
 	}
 }
@@ -95,10 +96,16 @@ func (a *OpenAIAdapter) buildBody(req ChatCompletionRequest) map[string]any {
 	if req.User != "" {
 		body["user"] = req.User
 	}
+	if req.ServiceTier != "" {
+		body["service_tier"] = req.ServiceTier
+	}
 	return body
 }
 
-func (a *OpenAIAdapter) doRequest(ctx context.Context, body map[string]any) (*http.Response, error) {
+func (a *OpenAIAdapter) doRequest(ctx context.Context, body map[string]any, timeout time.Duration) (*http.Response, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
 	data, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
@@ -110,6 +117,13 @@ func (a *OpenAIAdapter) doRequest(ctx context.Context, body map[string]any) (*ht
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+a.apiKey)
 	return a.client.Do(httpReq)
+}
+
+func (a *OpenAIAdapter) requestTimeout(req ChatCompletionRequest) time.Duration {
+	if req.ServiceTier == "flex" {
+		return GetFlexHTTPTimeout()
+	}
+	return GetDefaultHTTPTimeout()
 }
 
 func (a *OpenAIAdapter) mapError(resp *http.Response, body []byte) error {
@@ -139,7 +153,7 @@ func (a *OpenAIAdapter) SendRequest(ctx context.Context, req ChatCompletionReque
 	body := a.buildBody(req)
 	delete(body, "stream")
 
-	resp, err := a.doRequest(ctx, body)
+	resp, err := a.doRequest(ctx, body, a.requestTimeout(req))
 	if err != nil {
 		return nil, NewError(502, fmt.Sprintf("%s request failed: %v", a.name, err), map[string]any{"provider_name": a.name})
 	}
@@ -176,7 +190,7 @@ func (a *OpenAIAdapter) SendStreamingRequest(ctx context.Context, req ChatComple
 		body := a.buildBody(req)
 		body["stream"] = true
 
-		resp, err := a.doRequest(ctx, body)
+		resp, err := a.doRequest(ctx, body, a.requestTimeout(req))
 		if err != nil {
 			errCh <- NewError(502, fmt.Sprintf("%s stream failed: %v", a.name, err), map[string]any{"provider_name": a.name})
 			return

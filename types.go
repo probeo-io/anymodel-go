@@ -154,6 +154,7 @@ type ChatCompletionRequest struct {
 	Tools            []Tool          `json:"tools,omitempty"`
 	ToolChoice       any             `json:"tool_choice,omitempty"` // string or ToolChoiceObject
 	User             string          `json:"user,omitempty"`
+	ServiceTier      string          `json:"service_tier,omitempty"` // "auto" (default) or "flex" (OpenAI flex pricing)
 
 	// Anymodel-specific
 	Models     []string             `json:"models,omitempty"`

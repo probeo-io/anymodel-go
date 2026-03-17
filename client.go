@@ -30,6 +30,10 @@ func New(cfg *Config) *Client {
 		aliases = map[string]string{}
 	}
 
+	if resolved.Defaults != nil && resolved.Defaults.Timeout != nil {
+		SetDefaultHTTPTimeout(time.Duration(*resolved.Defaults.Timeout * float64(time.Second)))
+	}
+
 	router := NewRouter(registry, aliases, resolved.Defaults, statsStore)
 	registerProviders(resolved, registry)
 
@@ -50,6 +54,9 @@ func New(cfg *Config) *Client {
 
 	store := NewBatchStore(batchDir)
 	batchMgr := NewBatchManager(registry, store, aliases, batchConcurrency, batchPollInterval)
+
+	// Register native batch adapters
+	registerBatchAdapters(resolved, batchMgr)
 
 	c := &Client{
 		config: resolved, router: router, registry: registry,
@@ -105,6 +112,18 @@ func registerProviders(cfg *Config, registry *Registry) {
 
 	for name, custom := range cfg.Custom {
 		registry.Register(name, NewCustomAdapter(name, custom.BaseURL, custom.APIKey, custom.Models))
+	}
+}
+
+func registerBatchAdapters(cfg *Config, batchMgr *BatchManager) {
+	if cfg.OpenAI != nil && cfg.OpenAI.APIKey != "" {
+		batchMgr.RegisterBatchAdapter("openai", NewOpenAIBatchAdapter(cfg.OpenAI.APIKey))
+	}
+	if cfg.Anthropic != nil && cfg.Anthropic.APIKey != "" {
+		batchMgr.RegisterBatchAdapter("anthropic", NewAnthropicBatchAdapter(cfg.Anthropic.APIKey))
+	}
+	if cfg.Google != nil && cfg.Google.APIKey != "" {
+		batchMgr.RegisterBatchAdapter("google", NewGoogleBatchAdapter(cfg.Google.APIKey))
 	}
 }
 

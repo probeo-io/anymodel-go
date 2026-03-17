@@ -40,7 +40,7 @@ func main() {
 - **Streaming** — Channel-based streaming with SSE
 - **Tool Calling** — Unified function calling across providers
 - **Fallback Routing** — Automatic failover across models/providers
-- **Batch Processing** — Native batch APIs (OpenAI, Anthropic) + concurrent fallback
+- **Batch Processing** — Native batch APIs (OpenAI, Anthropic, Google) + concurrent fallback
 - **HTTP Server** — OpenAI-compatible `/api/v1` endpoints
 - **Rate Limiting** — Per-provider tracking with automatic backoff
 - **Retry** — Exponential backoff with jitter on 429/5xx
@@ -60,6 +60,18 @@ if err != nil {
 for chunk := range chunkCh {
     fmt.Print(chunk.Choices[0].Delta.Content)
 }
+```
+
+### Flex Pricing (OpenAI)
+
+Get 50% off OpenAI requests with flexible latency:
+
+```go
+result, err := client.Chat.Completions.Create(ctx, am.ChatCompletionRequest{
+    Model:       "openai/gpt-4o",
+    Messages:    []am.Message{{Role: am.RoleUser, Content: "Hello!"}},
+    ServiceTier: "flex",
+})
 ```
 
 ## Fallback Routing
@@ -92,6 +104,8 @@ results, err := client.Batches.CreateAndPoll(ctx, am.BatchCreateRequest{
 })
 ```
 
+When `max_tokens` isn't set on a batch request, anymodel automatically calculates a safe value per-request based on the estimated input size and the model's context window. This prevents truncated responses and context overflow errors without requiring you to hand-tune each request in a large batch.
+
 ## HTTP Server
 
 ```bash
@@ -122,7 +136,7 @@ Or configure programmatically:
 client := am.New(&am.Config{
     Anthropic: &am.ProviderConfig{APIKey: "sk-ant-..."},
     Aliases:   map[string]string{"default": "anthropic/claude-sonnet-4-6"},
-    Defaults:  &am.DefaultsConfig{Temperature: floatPtr(0.7)},
+    Defaults:  &am.DefaultsConfig{Temperature: floatPtr(0.7), Timeout: floatPtr(120)}, // default: 2 min normal, 10 min flex
 })
 ```
 
@@ -132,7 +146,7 @@ client := am.New(&am.Config{
 |----------|---------|-------|
 | OpenAI | `OPENAI_API_KEY` | Native |
 | Anthropic | `ANTHROPIC_API_KEY` | Native |
-| Google | `GOOGLE_API_KEY` | Concurrent |
+| Google | `GOOGLE_API_KEY` | Native |
 | Mistral | `MISTRAL_API_KEY` | Concurrent |
 | Groq | `GROQ_API_KEY` | Concurrent |
 | DeepSeek | `DEEPSEEK_API_KEY` | Concurrent |

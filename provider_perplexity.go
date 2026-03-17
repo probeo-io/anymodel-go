@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 )
 
 var perplexitySupportedParams = map[string]bool{
@@ -30,7 +29,7 @@ func NewPerplexityAdapter(apiKey string) *PerplexityAdapter {
 	return &PerplexityAdapter{
 		apiKey:  apiKey,
 		baseURL: "https://api.perplexity.ai",
-		client:  &http.Client{Timeout: 120 * time.Second},
+		client:  &http.Client{Timeout: GetDefaultHTTPTimeout()},
 	}
 }
 

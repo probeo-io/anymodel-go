@@ -27,12 +27,12 @@ type GoogleAdapter struct {
 
 // NewGoogleAdapter creates a Google Gemini provider adapter.
 func NewGoogleAdapter(apiKey string) *GoogleAdapter {
-	return &GoogleAdapter{apiKey: apiKey, client: &http.Client{Timeout: 120 * time.Second}}
+	return &GoogleAdapter{apiKey: apiKey, client: &http.Client{Timeout: GetDefaultHTTPTimeout()}}
 }
 
 func (a *GoogleAdapter) Name() string                        { return "google" }
 func (a *GoogleAdapter) SupportsParameter(param string) bool { return googleSupportedParams[param] }
-func (a *GoogleAdapter) SupportsBatch() bool                 { return false }
+func (a *GoogleAdapter) SupportsBatch() bool                 { return true }
 
 func (a *GoogleAdapter) translateMessages(messages []Message) (system string, contents []map[string]any) {
 	for _, m := range messages {
