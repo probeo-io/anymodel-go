@@ -149,6 +149,35 @@ func (s *BatchStore) LoadProviderState(id string) (map[string]any, error) {
 	return state, nil
 }
 
+// StreamRequests reads requests from JSONL one at a time via a channel (memory-efficient).
+func (s *BatchStore) StreamRequests(id string, ch chan<- BatchRequestItem) error {
+	s.mu.Lock()
+	path := filepath.Join(s.batchDir(id), "requests.jsonl")
+	data, err := os.ReadFile(path)
+	s.mu.Unlock()
+	if err != nil {
+		close(ch)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	go func() {
+		defer close(ch)
+		for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+			if line == "" {
+				continue
+			}
+			var item BatchRequestItem
+			if err := json.Unmarshal([]byte(line), &item); err != nil {
+				continue
+			}
+			ch <- item
+		}
+	}()
+	return nil
+}
+
 // ListBatches returns all batch IDs on disk.
 func (s *BatchStore) ListBatches() ([]string, error) {
 	s.mu.Lock()

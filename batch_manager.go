@@ -77,7 +77,7 @@ func (m *BatchManager) Create(ctx context.Context, req BatchCreateRequest) (*Bat
 	if mode == BatchNative {
 		go m.processNativeBatch(context.Background(), batchID, req, parsed.Provider)
 	} else {
-		go m.processConcurrentBatch(context.Background(), batchID, req, parsed)
+		go m.processConcurrentBatch(context.Background(), batchID, req.Model, req.Options, parsed)
 	}
 
 	return &batch, nil
@@ -219,7 +219,7 @@ func (m *BatchManager) processNativeBatch(ctx context.Context, batchID string, r
 	}
 }
 
-func (m *BatchManager) processConcurrentBatch(ctx context.Context, batchID string, req BatchCreateRequest, parsed *ParsedModel) {
+func (m *BatchManager) processConcurrentBatch(ctx context.Context, batchID string, model string, options *BatchCreateOptions, parsed *ParsedModel) {
 	adapter, err := m.registry.Get(parsed.Provider)
 	if err != nil {
 		m.failBatch(batchID)
@@ -231,12 +231,24 @@ func (m *BatchManager) processConcurrentBatch(ctx context.Context, batchID strin
 		m.store.UpdateMeta(*batch)
 	}
 
+	// Stream requests from disk instead of holding all in memory
+	itemCh := make(chan BatchRequestItem, m.concurrency)
+	if err := m.store.StreamRequests(batchID, itemCh); err != nil {
+		m.failBatch(batchID)
+		return
+	}
+
 	sem := make(chan struct{}, m.concurrency)
 	var wg sync.WaitGroup
 	var completed, failed int
 	var mu sync.Mutex
 
-	for _, item := range req.Requests {
+	for item := range itemCh {
+		// Check for cancellation
+		if batch, _ := m.store.GetMeta(batchID); batch != nil && batch.Status == BatchCancelled {
+			break
+		}
+
 		wg.Add(1)
 		sem <- struct{}{}
 
@@ -249,13 +261,13 @@ func (m *BatchManager) processConcurrentBatch(ctx context.Context, batchID strin
 			}
 			if item.MaxTokens != nil {
 				completionReq.MaxTokens = item.MaxTokens
-			} else if req.Options != nil && req.Options.MaxTokens != nil {
-				completionReq.MaxTokens = req.Options.MaxTokens
+			} else if options != nil && options.MaxTokens != nil {
+				completionReq.MaxTokens = options.MaxTokens
 			}
 			if item.Temperature != nil {
 				completionReq.Temperature = item.Temperature
-			} else if req.Options != nil && req.Options.Temperature != nil {
-				completionReq.Temperature = req.Options.Temperature
+			} else if options != nil && options.Temperature != nil {
+				completionReq.Temperature = options.Temperature
 			}
 
 			result, err := adapter.SendRequest(ctx, completionReq)

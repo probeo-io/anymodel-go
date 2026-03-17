@@ -106,6 +106,8 @@ results, err := client.Batches.CreateAndPoll(ctx, am.BatchCreateRequest{
 
 When `max_tokens` isn't set on a batch request, anymodel automatically calculates a safe value per-request based on the estimated input size and the model's context window. This prevents truncated responses and context overflow errors without requiring you to hand-tune each request in a large batch.
 
+Concurrent batch requests are streamed from disk — only N requests (default 5) are in-flight at a time, making 10K+ request batches safe without memory spikes.
+
 ## HTTP Server
 
 ```bash
