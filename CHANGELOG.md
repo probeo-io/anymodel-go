@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2026-03-19
+
+### Added
+
+- Automatic per-request cost calculation from bundled pricing data (323 models)
+- Pricing fetched from OpenRouter at build time — always current as of last publish
+- `GenerationStats.TotalCost` now calculated automatically from token usage
+- `BatchUsageSummary.EstimatedCost` now calculated automatically from token usage
+- Exported `GetModelPricing()`, `CalculateCost()`, `PricingEntry` type
+- `BatchMode` option on `BatchCreateRequest` — set to `"concurrent"` to force individual requests (e.g. for flex pricing)
+- `ServiceTier` support on batch requests (concurrent path only — native batch already discounted)
+
 ## [0.3.1] - 2026-03-17
 
 ### Changed

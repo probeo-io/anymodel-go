@@ -172,10 +172,13 @@ func (m *BatchManager) Results(batchID string) (*BatchResults, error) {
 			totalCompletion += r.Response.Usage.CompletionTokens
 		}
 	}
+	estimatedCost := CalculateCost(batch.Model, totalPrompt, totalCompletion)
+
 	return &BatchResults{
 		ID: batchID, Status: batch.Status, Results: results,
 		UsageSummary: BatchUsageSummary{
 			TotalPromptTokens: totalPrompt, TotalCompletionTokens: totalCompletion,
+			EstimatedCost: estimatedCost,
 		},
 	}, nil
 }

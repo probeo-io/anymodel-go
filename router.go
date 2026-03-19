@@ -116,6 +116,7 @@ func (r *Router) Complete(ctx context.Context, req ChatCompletionRequest) (*Chat
 	elapsed := time.Since(start)
 	r.statsStore.Record(GenerationStats{
 		ID: result.ID, Model: result.Model, ProviderName: parsed.Provider,
+		TotalCost:    CalculateCost(req.Model, result.Usage.PromptTokens, result.Usage.CompletionTokens),
 		TokensPrompt: result.Usage.PromptTokens, TokensCompletion: result.Usage.CompletionTokens,
 		Latency: elapsed.Seconds(), GenerationTime: elapsed.Seconds(),
 		CreatedAt: time.Now().Format(time.RFC3339),
