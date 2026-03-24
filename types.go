@@ -356,9 +356,10 @@ type BatchResults struct {
 
 // BatchPollOptions controls batch polling behavior.
 type BatchPollOptions struct {
-	Interval   float64                  `json:"interval,omitempty"`   // seconds
-	Timeout    float64                  `json:"timeout,omitempty"`    // seconds, 0 = indefinite
-	OnProgress func(batch *BatchObject) `json:"-"`
+	Interval     float64                  `json:"interval,omitempty"`       // seconds
+	Timeout      float64                  `json:"timeout,omitempty"`        // seconds, 0 = indefinite
+	LogToConsole bool                     `json:"log_to_console,omitempty"` // log poll progress to stdout
+	OnProgress   func(batch *BatchObject) `json:"-"`
 }
 
 // ── Config ──────────────────────────────────────────────────────────────────

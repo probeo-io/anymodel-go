@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2026-03-24
+
+### Added
+
+- **BatchBuilder API** — ergonomic batch construction with `client.Batches.Open(config)`
+  - `Add(prompt)` persists to disk immediately, caller just passes strings
+  - `Submit(ctx)` formats and dispatches to provider
+  - `Poll(ctx, opts)` returns clean `Succeeded`/`Failed` results with per-item costs
+  - `Retry(failed)` creates a new builder pre-loaded with failed items
+- Poll logging: `LogToConsole` option on `BatchPollOptions` and `ANYMODEL_BATCH_POLL_LOG` env var
+
 ## [0.4.0] - 2026-03-19
 
 ### Added

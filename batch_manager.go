@@ -2,6 +2,9 @@ package anymodel
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -33,6 +36,11 @@ func NewBatchManager(registry *Registry, store *BatchStore, aliases map[string]s
 		concurrency:   concurrency,
 		pollInterval:  pollInterval,
 	}
+}
+
+// GetStore returns the batch store.
+func (m *BatchManager) GetStore() *BatchStore {
+	return m.store
 }
 
 // RegisterBatchAdapter registers a native batch adapter for a provider.
@@ -108,6 +116,8 @@ func (m *BatchManager) Poll(ctx context.Context, batchID string, opts BatchPollO
 		deadline = timer.C
 	}
 
+	logEnabled := opts.LogToConsole || shouldLogPoll()
+
 	for {
 		batch, err := m.store.GetMeta(batchID)
 		if err != nil {
@@ -115,6 +125,10 @@ func (m *BatchManager) Poll(ctx context.Context, batchID string, opts BatchPollO
 		}
 		if batch == nil {
 			return nil, NewError(404, "batch not found: "+batchID, nil)
+		}
+		if logEnabled {
+			fmt.Printf("[anymodel][batch.poll] id=%s status=%s mode=%s progress=%d/%d failed=%d\n",
+				batch.ID, batch.Status, batch.BatchMode, batch.Completed, batch.Total, batch.Failed)
 		}
 		if opts.OnProgress != nil {
 			opts.OnProgress(batch)
@@ -320,6 +334,11 @@ func (m *BatchManager) processConcurrentBatch(ctx context.Context, batchID strin
 		batch.Failed = failed
 		m.store.UpdateMeta(*batch)
 	}
+}
+
+func shouldLogPoll() bool {
+	v := strings.ToLower(os.Getenv("ANYMODEL_BATCH_POLL_LOG"))
+	return v == "1" || v == "true" || v == "yes"
 }
 
 func (m *BatchManager) failBatch(batchID string) {

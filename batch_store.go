@@ -149,6 +149,28 @@ func (s *BatchStore) LoadProviderState(id string) (map[string]any, error) {
 	return state, nil
 }
 
+// AppendRequest appends a single request to the requests JSONL file.
+func (s *BatchStore) AppendRequest(id string, request BatchRequestItem) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	dir := s.batchDir(id)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	path := filepath.Join(dir, "requests.jsonl")
+	data, err := json.Marshal(request)
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.WriteString(string(data) + "\n")
+	return err
+}
+
 // StreamRequests reads requests from JSONL one at a time via a channel (memory-efficient).
 func (s *BatchStore) StreamRequests(id string, ch chan<- BatchRequestItem) error {
 	s.mu.Lock()

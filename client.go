@@ -224,3 +224,8 @@ func (n *BatchNamespace) Results(batchID string) (*BatchResults, error) {
 func (n *BatchNamespace) Cancel(ctx context.Context, batchID string) (*BatchObject, error) {
 	return n.mgr.Cancel(ctx, batchID)
 }
+
+// Open creates a new BatchBuilder for fluent batch construction.
+func (n *BatchNamespace) Open(config BatchBuilderConfig) *BatchBuilder {
+	return NewBatchBuilder(config, n.mgr.GetStore(), n.mgr)
+}
