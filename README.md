@@ -108,6 +108,103 @@ When `max_tokens` isn't set on a batch request, anymodel automatically calculate
 
 Concurrent batch requests are streamed from disk — only N requests (default 5) are in-flight at a time, making 10K+ request batches safe without memory spikes.
 
+### BatchBuilder API
+
+An ergonomic interface for building batches — just pass strings, and anymodel handles IDs, system prompt injection, and provider-specific formatting:
+
+```go
+batch := client.Batches.Open(am.BatchBuilderConfig{
+    Model:  "anthropic/claude-sonnet-4-6",
+    System: "You are an expert.",
+})
+
+batch.Add("What is an LLC?")
+batch.Add("How do I dissolve an LLC?")
+
+err := batch.Submit(ctx)
+results, err := batch.Poll(ctx, am.BatchPollOptions{})
+
+fmt.Println(results.Succeeded) // successful responses with per-item costs
+fmt.Println(results.Failed)    // failed items
+fmt.Println(results.Usage)     // aggregate usage and EstimatedCost
+
+// Retry failed items
+retryBatch := batch.Retry(results.Failed)
+retryBatch.Submit(ctx)
+retryResults, _ := retryBatch.Poll(ctx, am.BatchPollOptions{})
+```
+
+### Batch mode
+
+Force concurrent execution instead of native batch APIs (useful when you want flex pricing on individual requests):
+
+```go
+results, err := client.Batches.CreateAndPoll(ctx, am.BatchCreateRequest{
+    Model:     "openai/gpt-4o",
+    BatchMode: "concurrent", // skip native batch, run as individual requests
+    Requests: []am.BatchRequestItem{
+        {CustomID: "req-1", Messages: []am.Message{{Role: am.RoleUser, Content: "Hello"}}},
+    },
+}, am.BatchPollOptions{})
+```
+
+### Service tier on batch requests
+
+Use flex pricing on concurrent batches for 50% cost savings:
+
+```go
+results, err := client.Batches.CreateAndPoll(ctx, am.BatchCreateRequest{
+    Model:       "openai/gpt-4o",
+    BatchMode:   "concurrent",
+    ServiceTier: "flex", // flex pricing on each concurrent request
+    Requests: []am.BatchRequestItem{
+        {CustomID: "req-1", Messages: []am.Message{{Role: am.RoleUser, Content: "Hello"}}},
+    },
+}, am.BatchPollOptions{})
+```
+
+### Poll logging
+
+Enable console logging during batch polling to monitor progress:
+
+```go
+// Per-call option
+results, err := client.Batches.CreateAndPoll(ctx, request, am.BatchPollOptions{
+    LogToConsole: true,
+})
+
+// Or enable globally via environment variable
+// ANYMODEL_BATCH_POLL_LOG=1
+```
+
+## Generation Stats
+
+```go
+result, err := client.Chat.Completions.Create(ctx, req)
+stats := client.Generation.Get(result.ID)
+fmt.Println(stats.Latency, stats.TokensPrompt, stats.TokensCompletion)
+fmt.Println(stats.TotalCost) // auto-calculated from bundled pricing data
+```
+
+### Auto Pricing / Cost Calculation
+
+Pricing for 323 models is baked in at build time from OpenRouter — always current as of last publish. Costs are calculated automatically from token usage with no configuration needed.
+
+```go
+// Per-request cost on GenerationStats
+stats := client.Generation.Get(result.ID)
+fmt.Println(stats.TotalCost) // e.g. 0.0023
+
+// Batch-level cost on BatchUsageSummary
+results, _ := client.Batches.CreateAndPoll(ctx, request, am.BatchPollOptions{})
+fmt.Println(results.Usage.EstimatedCost) // total across all requests
+
+// Native batch pricing is automatically 50% off
+// Utility functions also exported
+pricing := am.GetModelPricing("anthropic/claude-sonnet-4-6")
+cost := am.CalculateCost("anthropic/claude-sonnet-4-6", promptTokens, completionTokens)
+```
+
 ## HTTP Server
 
 ```bash
