@@ -187,6 +187,10 @@ func (m *BatchManager) Results(batchID string) (*BatchResults, error) {
 		}
 	}
 	estimatedCost := CalculateCost(batch.Model, totalPrompt, totalCompletion)
+	// Native batch APIs (OpenAI, Anthropic, Google) are 50% off list price
+	if batch.BatchMode == BatchNative {
+		estimatedCost *= 0.5
+	}
 
 	return &BatchResults{
 		ID: batchID, Status: batch.Status, Results: results,
