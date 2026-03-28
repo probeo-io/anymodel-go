@@ -255,10 +255,14 @@ client := am.New(&am.Config{
 | Perplexity | `PERPLEXITY_API_KEY` | Concurrent |
 | Ollama | `OLLAMA_BASE_URL` | Concurrent |
 
-## Also Available
+## See Also
 
-- **Node.js**: [`@probeo/anymodel`](https://github.com/probeo-io/anymodel) on npm
-- **Python**: [`anymodel-py`](https://github.com/probeo-io/anymodel-py) on PyPI
+| Package | Description |
+|---|---|
+| [@probeo/anymodel](https://github.com/probeo-io/anymodel) | TypeScript version of this package |
+| [anymodel-py](https://github.com/probeo-io/anymodel-py) | Python version of this package |
+| [anyserp-go](https://github.com/probeo-io/anyserp-go) | Unified SERP API router for Go |
+| [workflow-go](https://github.com/probeo-io/workflow-go) | Stage-based pipeline engine for Go |
 
 ## License
 
