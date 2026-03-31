@@ -452,6 +452,8 @@ func TestBatchManager_NativeRouting(t *testing.T) {
 		if batch.ProviderName != "openai" {
 			t.Errorf("provider_name = %q, want openai", batch.ProviderName)
 		}
+		// Wait for background goroutine to finish before TempDir cleanup
+		time.Sleep(300 * time.Millisecond)
 	})
 
 	t.Run("falls back to concurrent when no native adapter", func(t *testing.T) {
@@ -478,7 +480,7 @@ func TestBatchManager_NativeRouting(t *testing.T) {
 			t.Errorf("batch_mode = %q, want concurrent", batch.BatchMode)
 		}
 		// Wait for background goroutine to finish before TempDir cleanup
-		_, _ = manager.Poll(context.Background(), batch.ID, BatchPollOptions{Interval: 0.05})
+		time.Sleep(300 * time.Millisecond)
 	})
 
 	t.Run("persists provider state for native batches", func(t *testing.T) {
