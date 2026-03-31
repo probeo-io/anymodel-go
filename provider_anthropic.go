@@ -246,6 +246,49 @@ func (a *AnthropicAdapter) translateResponse(respBody []byte) (*ChatCompletion, 
 	}, nil
 }
 
+// extractAnthropicRateLimitHeaders extracts and normalizes Anthropic rate-limit headers.
+func extractAnthropicRateLimitHeaders(resp *http.Response) map[string]string {
+	headers := make(map[string]string)
+	mapping := map[string]string{
+		"anthropic-ratelimit-requests-remaining": "x-ratelimit-remaining-requests",
+		"anthropic-ratelimit-tokens-remaining":   "x-ratelimit-remaining-tokens",
+		"retry-after":                            "retry-after",
+	}
+	for src, dst := range mapping {
+		if v := resp.Header.Get(src); v != "" {
+			headers[dst] = v
+		}
+	}
+	return headers
+}
+
+// SendRequestWithMeta sends a request and returns the completion with response metadata.
+func (a *AnthropicAdapter) SendRequestWithMeta(ctx context.Context, req ChatCompletionRequest) (*ChatCompletionWithMeta, error) {
+	body := a.buildBody(req)
+	delete(body, "stream")
+
+	resp, err := a.doRequest(ctx, body)
+	if err != nil {
+		return nil, NewError(502, fmt.Sprintf("anthropic request failed: %v", err), map[string]any{"provider_name": "anthropic"})
+	}
+	defer resp.Body.Close()
+
+	meta := ResponseMeta{Headers: extractAnthropicRateLimitHeaders(resp)}
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, NewError(502, "failed to read response", map[string]any{"provider_name": "anthropic"})
+	}
+	if resp.StatusCode != 200 {
+		return nil, a.mapError(resp, respBody)
+	}
+	completion, err := a.translateResponse(respBody)
+	if err != nil {
+		return nil, err
+	}
+	return &ChatCompletionWithMeta{Completion: completion, Meta: meta}, nil
+}
+
 func (a *AnthropicAdapter) SendRequest(ctx context.Context, req ChatCompletionRequest) (*ChatCompletion, error) {
 	body := a.buildBody(req)
 	delete(body, "stream")

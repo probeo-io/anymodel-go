@@ -16,6 +16,13 @@ type Adapter interface {
 	SupportsBatch() bool
 }
 
+// AdapterWithMeta extends Adapter with the ability to return response metadata
+// (e.g., rate-limit headers) alongside the completion.
+type AdapterWithMeta interface {
+	Adapter
+	SendRequestWithMeta(ctx context.Context, req ChatCompletionRequest) (*ChatCompletionWithMeta, error)
+}
+
 // NativeBatchStatus is the status returned by a provider's native batch API.
 type NativeBatchStatus struct {
 	Status    BatchStatus

@@ -7,9 +7,19 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 )
+
+// maxCompletionTokensRe matches models that use max_completion_tokens instead of max_tokens.
+var maxCompletionTokensRe = regexp.MustCompile(`^(o[1-9]|gpt-5|gpt-4o)`)
+
+// usesMaxCompletionTokens returns true if the model uses max_completion_tokens
+// instead of max_tokens in the OpenAI API.
+func usesMaxCompletionTokens(model string) bool {
+	return maxCompletionTokensRe.MatchString(model)
+}
 
 var openaiSupportedParams = map[string]bool{
 	"temperature": true, "max_tokens": true, "top_p": true,
@@ -54,7 +64,11 @@ func (a *OpenAIAdapter) buildBody(req ChatCompletionRequest) map[string]any {
 		body["temperature"] = *req.Temperature
 	}
 	if req.MaxTokens != nil {
-		body["max_tokens"] = *req.MaxTokens
+		if usesMaxCompletionTokens(req.Model) {
+			body["max_completion_tokens"] = *req.MaxTokens
+		} else {
+			body["max_tokens"] = *req.MaxTokens
+		}
 	}
 	if req.TopP != nil {
 		body["top_p"] = *req.TopP
@@ -177,6 +191,57 @@ func (a *OpenAIAdapter) SendRequest(ctx context.Context, req ChatCompletionReque
 	}
 	completion.Model = a.name + "/" + completion.Model
 	return &completion, nil
+}
+
+// extractOpenAIRateLimitHeaders extracts rate-limit headers from an HTTP response.
+func extractOpenAIRateLimitHeaders(resp *http.Response) map[string]string {
+	headers := make(map[string]string)
+	keys := []string{
+		"x-ratelimit-remaining-requests",
+		"x-ratelimit-remaining-tokens",
+		"x-ratelimit-reset-requests",
+		"x-ratelimit-reset-tokens",
+		"retry-after",
+	}
+	for _, k := range keys {
+		if v := resp.Header.Get(k); v != "" {
+			headers[k] = v
+		}
+	}
+	return headers
+}
+
+// SendRequestWithMeta sends a request and returns the completion with response metadata.
+func (a *OpenAIAdapter) SendRequestWithMeta(ctx context.Context, req ChatCompletionRequest) (*ChatCompletionWithMeta, error) {
+	body := a.buildBody(req)
+	delete(body, "stream")
+
+	resp, err := a.doRequest(ctx, body, a.requestTimeout(req))
+	if err != nil {
+		return nil, NewError(502, fmt.Sprintf("%s request failed: %v", a.name, err), map[string]any{"provider_name": a.name})
+	}
+	defer resp.Body.Close()
+
+	meta := ResponseMeta{Headers: extractOpenAIRateLimitHeaders(resp)}
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, NewError(502, "failed to read response", map[string]any{"provider_name": a.name})
+	}
+	if resp.StatusCode != 200 {
+		return nil, a.mapError(resp, respBody)
+	}
+
+	var completion ChatCompletion
+	if err := json.Unmarshal(respBody, &completion); err != nil {
+		return nil, NewError(502, "failed to parse response", map[string]any{"provider_name": a.name})
+	}
+
+	if strings.HasPrefix(completion.ID, "chatcmpl-") {
+		completion.ID = "gen-" + completion.ID[9:]
+	}
+	completion.Model = a.name + "/" + completion.Model
+	return &ChatCompletionWithMeta{Completion: &completion, Meta: meta}, nil
 }
 
 func (a *OpenAIAdapter) SendStreamingRequest(ctx context.Context, req ChatCompletionRequest) (<-chan ChatCompletionChunk, <-chan error) {

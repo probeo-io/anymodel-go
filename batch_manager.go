@@ -11,30 +11,42 @@ import (
 
 // BatchManager handles batch lifecycle.
 type BatchManager struct {
-	store         *BatchStore
-	registry      *Registry
-	batchAdapters map[string]BatchAdapter
-	aliases       map[string]string
-	concurrency   int
-	pollInterval  time.Duration
-	mu            sync.Mutex
+	store          *BatchStore
+	registry       *Registry
+	router         *Router
+	batchAdapters  map[string]BatchAdapter
+	aliases        map[string]string
+	concurrency    int
+	concurrencyMax int
+	useAdaptive    bool
+	pollInterval   time.Duration
+	mu             sync.Mutex
 }
 
 // NewBatchManager creates a new batch manager.
-func NewBatchManager(registry *Registry, store *BatchStore, aliases map[string]string, concurrency int, pollInterval time.Duration) *BatchManager {
+// When concurrency is set to -1 (representing "auto"), adaptive concurrency is enabled.
+func NewBatchManager(registry *Registry, store *BatchStore, aliases map[string]string, concurrency int, concurrencyMax int, pollInterval time.Duration, router *Router) *BatchManager {
+	useAdaptive := false
 	if concurrency <= 0 {
 		concurrency = 5
+		useAdaptive = true
+	}
+	if concurrencyMax <= 0 {
+		concurrencyMax = 500
 	}
 	if pollInterval <= 0 {
 		pollInterval = 5 * time.Second
 	}
 	return &BatchManager{
-		store:         store,
-		registry:      registry,
-		batchAdapters: make(map[string]BatchAdapter),
-		aliases:       aliases,
-		concurrency:   concurrency,
-		pollInterval:  pollInterval,
+		store:          store,
+		registry:       registry,
+		router:         router,
+		batchAdapters:  make(map[string]BatchAdapter),
+		aliases:        aliases,
+		concurrency:    concurrency,
+		concurrencyMax: concurrencyMax,
+		useAdaptive:    useAdaptive,
+		pollInterval:   pollInterval,
 	}
 }
 
@@ -70,10 +82,19 @@ func (m *BatchManager) Create(ctx context.Context, req BatchCreateRequest) (*Bat
 		}
 	}
 
+	// Resolve service_tier from request-level options or individual items
+	serviceTier := ""
+	if req.Options != nil && req.Options.ServiceTier != "" {
+		serviceTier = req.Options.ServiceTier
+	} else if len(req.Requests) > 0 && req.Requests[0].ServiceTier != "" {
+		serviceTier = req.Requests[0].ServiceTier
+	}
+
 	batch := BatchObject{
 		ID: batchID, Object: "batch", Status: BatchPending,
 		Model: req.Model, ProviderName: parsed.Provider,
-		BatchMode: mode, Total: len(req.Requests),
+		BatchMode: mode, ServiceTier: serviceTier,
+		Total: len(req.Requests),
 		CreatedAt: now,
 	}
 
@@ -187,10 +208,16 @@ func (m *BatchManager) Results(batchID string) (*BatchResults, error) {
 		}
 	}
 	estimatedCost := CalculateCost(batch.Model, totalPrompt, totalCompletion)
-	// Native batch APIs (OpenAI, Anthropic, Google) are 50% off list price
+	// Native batch APIs are 50% off; concurrent with flex is also 50% off
+	var batchDiscount float64
 	if batch.BatchMode == BatchNative {
-		estimatedCost *= 0.5
+		batchDiscount = 0.5
+	} else if batch.ServiceTier == "flex" {
+		batchDiscount = 0.5
+	} else {
+		batchDiscount = 1.0
 	}
+	estimatedCost *= batchDiscount
 
 	return &BatchResults{
 		ID: batchID, Status: batch.Status, Results: results,
@@ -243,15 +270,25 @@ func (m *BatchManager) processNativeBatch(ctx context.Context, batchID string, r
 }
 
 func (m *BatchManager) processConcurrentBatch(ctx context.Context, batchID string, model string, options *BatchCreateOptions, parsed *ParsedModel) {
-	adapter, err := m.registry.Get(parsed.Provider)
-	if err != nil {
-		m.failBatch(batchID)
-		return
-	}
-
 	if batch, _ := m.store.GetMeta(batchID); batch != nil {
 		batch.Status = BatchProcessing
 		m.store.UpdateMeta(*batch)
+	}
+
+	// Set up adaptive concurrency controller if enabled
+	var controller *AdaptiveConcurrencyController
+	if m.useAdaptive {
+		controller = NewAdaptiveConcurrencyController(&AdaptiveConcurrencyOptions{
+			Initial: m.concurrency,
+			Max:     m.concurrencyMax,
+		})
+	}
+
+	getLimit := func() int {
+		if controller != nil {
+			return controller.MaxConcurrency()
+		}
+		return m.concurrency
 	}
 
 	// Stream requests from disk instead of holding all in memory
@@ -261,7 +298,7 @@ func (m *BatchManager) processConcurrentBatch(ctx context.Context, batchID strin
 		return
 	}
 
-	sem := make(chan struct{}, m.concurrency)
+	sem := make(chan struct{}, getLimit())
 	var wg sync.WaitGroup
 	var completed, failed int
 	var mu sync.Mutex
@@ -272,6 +309,13 @@ func (m *BatchManager) processConcurrentBatch(ctx context.Context, batchID strin
 			break
 		}
 
+		// Respect rate-limit pause from the controller
+		if controller != nil {
+			if delay := controller.GetDelay(); delay > 0 {
+				time.Sleep(time.Duration(delay) * time.Millisecond)
+			}
+		}
+
 		wg.Add(1)
 		sem <- struct{}{}
 
@@ -280,7 +324,7 @@ func (m *BatchManager) processConcurrentBatch(ctx context.Context, batchID strin
 			defer func() { <-sem }()
 
 			completionReq := ChatCompletionRequest{
-				Model: parsed.Model, Messages: item.Messages,
+				Model: model, Messages: item.Messages,
 			}
 			if item.MaxTokens != nil {
 				completionReq.MaxTokens = item.MaxTokens
@@ -298,23 +342,57 @@ func (m *BatchManager) processConcurrentBatch(ctx context.Context, batchID strin
 				completionReq.ServiceTier = options.ServiceTier
 			}
 
-			result, err := adapter.SendRequest(ctx, completionReq)
+			var resultItem BatchResultItem
+
+			if m.router != nil && controller != nil {
+				// Use CompleteWithMeta for adaptive concurrency
+				withMeta, err := m.router.CompleteWithMeta(ctx, completionReq)
+				if err != nil {
+					if e, ok := err.(*Error); ok && e.Code == 429 {
+						controller.RecordThrottle(0)
+					}
+					resultItem = BatchResultItem{
+						CustomID: item.CustomID, Status: "error",
+						Error: &BatchError{Code: 500, Message: err.Error()},
+					}
+				} else {
+					controller.RecordSuccess(&withMeta.Meta)
+					resultItem = BatchResultItem{
+						CustomID: item.CustomID, Status: "success", Response: withMeta.Completion,
+					}
+				}
+			} else {
+				// Fallback to direct adapter call
+				adapter, err := m.registry.Get(parsed.Provider)
+				if err != nil {
+					resultItem = BatchResultItem{
+						CustomID: item.CustomID, Status: "error",
+						Error: &BatchError{Code: 500, Message: err.Error()},
+					}
+				} else {
+					result, err := adapter.SendRequest(ctx, completionReq)
+					if err != nil {
+						resultItem = BatchResultItem{
+							CustomID: item.CustomID, Status: "error",
+							Error: &BatchError{Code: 500, Message: err.Error()},
+						}
+					} else {
+						resultItem = BatchResultItem{
+							CustomID: item.CustomID, Status: "success", Response: result,
+						}
+					}
+				}
+			}
 
 			mu.Lock()
 			defer mu.Unlock()
 
-			if err != nil {
-				failed++
-				m.store.AppendResult(batchID, BatchResultItem{
-					CustomID: item.CustomID, Status: "error",
-					Error: &BatchError{Code: 500, Message: err.Error()},
-				})
-			} else {
+			if resultItem.Status == "success" {
 				completed++
-				m.store.AppendResult(batchID, BatchResultItem{
-					CustomID: item.CustomID, Status: "success", Response: result,
-				})
+			} else {
+				failed++
 			}
+			m.store.AppendResult(batchID, resultItem)
 
 			if batch, _ := m.store.GetMeta(batchID); batch != nil {
 				batch.Completed = completed

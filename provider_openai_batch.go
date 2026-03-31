@@ -113,10 +113,11 @@ func (a *OpenAIBatchAdapter) buildJSONL(model string, requests []BatchRequestIte
 			"model":    model,
 			"messages": req.Messages,
 		}
-		if req.MaxTokens != nil {
-			body["max_tokens"] = *req.MaxTokens
+		maxTokensValue := ResolveMaxTokens(model, req.Messages, req.MaxTokens)
+		if usesMaxCompletionTokens(model) {
+			body["max_completion_tokens"] = maxTokensValue
 		} else {
-			body["max_tokens"] = ResolveMaxTokens(model, req.Messages, nil)
+			body["max_tokens"] = maxTokensValue
 		}
 		if req.Temperature != nil {
 			body["temperature"] = *req.Temperature

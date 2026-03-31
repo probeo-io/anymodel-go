@@ -39,6 +39,7 @@ func New(cfg *Config) *Client {
 
 	batchDir := ".anymodel/batches"
 	batchConcurrency := 5
+	batchConcurrencyMax := 500
 	batchPollInterval := 5 * time.Second
 	if resolved.Batch != nil {
 		if resolved.Batch.Dir != "" {
@@ -47,13 +48,16 @@ func New(cfg *Config) *Client {
 		if resolved.Batch.ConcurrencyFallback > 0 {
 			batchConcurrency = resolved.Batch.ConcurrencyFallback
 		}
+		if resolved.Batch.ConcurrencyMax > 0 {
+			batchConcurrencyMax = resolved.Batch.ConcurrencyMax
+		}
 		if resolved.Batch.PollInterval > 0 {
 			batchPollInterval = time.Duration(resolved.Batch.PollInterval * float64(time.Second))
 		}
 	}
 
 	store := NewBatchStore(batchDir)
-	batchMgr := NewBatchManager(registry, store, aliases, batchConcurrency, batchPollInterval)
+	batchMgr := NewBatchManager(registry, store, aliases, batchConcurrency, batchConcurrencyMax, batchPollInterval, router)
 
 	// Register native batch adapters
 	registerBatchAdapters(resolved, batchMgr)

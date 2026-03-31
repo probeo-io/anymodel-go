@@ -140,6 +140,9 @@ func mergeConfig(base, override *Config) {
 		if override.Batch.ConcurrencyFallback > 0 {
 			base.Batch.ConcurrencyFallback = override.Batch.ConcurrencyFallback
 		}
+		if override.Batch.ConcurrencyMax > 0 {
+			base.Batch.ConcurrencyMax = override.Batch.ConcurrencyMax
+		}
 	}
 }
 

@@ -211,6 +211,52 @@ func (a *GoogleAdapter) translateResponse(respBody []byte, model string) (*ChatC
 	}, nil
 }
 
+// extractGoogleRateLimitHeaders extracts rate-limit headers from a Google response.
+func extractGoogleRateLimitHeaders(resp *http.Response) map[string]string {
+	headers := make(map[string]string)
+	keys := []string{
+		"x-ratelimit-remaining-requests",
+		"x-ratelimit-remaining-tokens",
+		"retry-after",
+	}
+	for _, k := range keys {
+		if v := resp.Header.Get(k); v != "" {
+			headers[k] = v
+		}
+	}
+	return headers
+}
+
+// SendRequestWithMeta sends a request and returns the completion with response metadata.
+func (a *GoogleAdapter) SendRequestWithMeta(ctx context.Context, req ChatCompletionRequest) (*ChatCompletionWithMeta, error) {
+	body := a.buildBody(req)
+	data, _ := json.Marshal(body)
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", a.geminiURL(req.Model, false), bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := a.client.Do(httpReq)
+	if err != nil {
+		return nil, NewError(502, fmt.Sprintf("google request failed: %v", err), map[string]any{"provider_name": "google"})
+	}
+	defer resp.Body.Close()
+
+	meta := ResponseMeta{Headers: extractGoogleRateLimitHeaders(resp)}
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return nil, a.mapError(resp, respBody)
+	}
+	completion, err := a.translateResponse(respBody, req.Model)
+	if err != nil {
+		return nil, err
+	}
+	return &ChatCompletionWithMeta{Completion: completion, Meta: meta}, nil
+}
+
 func (a *GoogleAdapter) SendRequest(ctx context.Context, req ChatCompletionRequest) (*ChatCompletion, error) {
 	body := a.buildBody(req)
 	data, _ := json.Marshal(body)

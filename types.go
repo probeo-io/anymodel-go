@@ -190,6 +190,19 @@ type ChatCompletion struct {
 	Usage   Usage                  `json:"usage"`
 }
 
+// ── Response Meta ───────────────────────────────────────────────────────────
+
+// ResponseMeta carries metadata extracted from a provider's HTTP response.
+type ResponseMeta struct {
+	Headers map[string]string `json:"headers,omitempty"`
+}
+
+// ChatCompletionWithMeta pairs a completion with its response metadata.
+type ChatCompletionWithMeta struct {
+	Completion *ChatCompletion `json:"completion"`
+	Meta       ResponseMeta    `json:"meta"`
+}
+
 // ── Streaming ───────────────────────────────────────────────────────────────
 
 // ChunkDelta is the incremental content in a streaming chunk.
@@ -317,6 +330,7 @@ type BatchObject struct {
 	Model        string      `json:"model"`
 	ProviderName string      `json:"provider_name"`
 	BatchMode    BatchMode   `json:"batch_mode"`
+	ServiceTier  string      `json:"service_tier,omitempty"`
 	Total        int         `json:"total"`
 	Completed    int         `json:"completed"`
 	Failed       int         `json:"failed"`
@@ -398,6 +412,7 @@ type BatchConfig struct {
 	Dir                 string  `json:"dir,omitempty"`
 	PollInterval        float64 `json:"poll_interval,omitempty"`         // seconds
 	ConcurrencyFallback int     `json:"concurrency_fallback,omitempty"`
+	ConcurrencyMax      int     `json:"concurrency_max,omitempty"`
 	RetentionDays       int     `json:"retention_days,omitempty"`
 }
 

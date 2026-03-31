@@ -29,6 +29,7 @@ var knownModelLimits = map[string]modelLimits{
 	"o1":            {200000, 100000},
 	"o3":            {200000, 100000},
 	"o4-mini":       {200000, 100000},
+	"gpt-5-mini":    {1047576, 65536},
 
 	// Anthropic
 	"claude-opus-4":    {200000, 32768},

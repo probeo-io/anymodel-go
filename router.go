@@ -126,6 +126,85 @@ func (r *Router) Complete(ctx context.Context, req ChatCompletionRequest) (*Chat
 	return result, nil
 }
 
+// CompleteWithMeta sends a non-streaming completion request and returns
+// both the completion and provider response metadata (e.g., rate-limit headers).
+func (r *Router) CompleteWithMeta(ctx context.Context, req ChatCompletionRequest) (*ChatCompletionWithMeta, error) {
+	if err := ValidateRequest(&req); err != nil {
+		return nil, err
+	}
+	r.applyDefaults(&req)
+	if len(req.Transforms) > 0 {
+		req.Messages = ApplyTransforms(req.Transforms, req.Messages, 128000)
+	}
+
+	parsed, err := ParseModelString(req.Model, r.aliases)
+	if err != nil {
+		return nil, err
+	}
+	adapter, err := r.registry.Get(parsed.Provider)
+	if err != nil {
+		return nil, err
+	}
+
+	stripped := r.stripUnsupported(req, adapter)
+	stripped.Model = parsed.Model
+
+	retries := 2
+	if r.defaults != nil && r.defaults.Retries != nil {
+		retries = *r.defaults.Retries
+	}
+
+	start := time.Now()
+
+	// Try AdapterWithMeta first; fall back to plain SendRequest
+	if awm, ok := adapter.(AdapterWithMeta); ok {
+		result, err := WithRetry(ctx, RetryOptions{
+			MaxRetries: retries, BaseDelay: 500 * time.Millisecond, MaxDelay: 10 * time.Second,
+		}, func() (*ChatCompletionWithMeta, error) {
+			return awm.SendRequestWithMeta(ctx, stripped)
+		})
+		if err != nil {
+			if e, ok := err.(*Error); ok && e.Code == 429 {
+				r.rateLimiter.Record(parsed.Provider, 60*time.Second)
+			}
+			return nil, err
+		}
+		elapsed := time.Since(start)
+		r.statsStore.Record(GenerationStats{
+			ID: result.Completion.ID, Model: result.Completion.Model, ProviderName: parsed.Provider,
+			TotalCost:    CalculateCost(req.Model, result.Completion.Usage.PromptTokens, result.Completion.Usage.CompletionTokens),
+			TokensPrompt: result.Completion.Usage.PromptTokens, TokensCompletion: result.Completion.Usage.CompletionTokens,
+			Latency: elapsed.Seconds(), GenerationTime: elapsed.Seconds(),
+			CreatedAt: time.Now().Format(time.RFC3339),
+			FinishReason: result.Completion.Choices[0].FinishReason, Streamed: false,
+		})
+		return result, nil
+	}
+
+	// Fallback: plain SendRequest with empty meta
+	result, err := WithRetry(ctx, RetryOptions{
+		MaxRetries: retries, BaseDelay: 500 * time.Millisecond, MaxDelay: 10 * time.Second,
+	}, func() (*ChatCompletion, error) {
+		return adapter.SendRequest(ctx, stripped)
+	})
+	if err != nil {
+		if e, ok := err.(*Error); ok && e.Code == 429 {
+			r.rateLimiter.Record(parsed.Provider, 60*time.Second)
+		}
+		return nil, err
+	}
+	elapsed := time.Since(start)
+	r.statsStore.Record(GenerationStats{
+		ID: result.ID, Model: result.Model, ProviderName: parsed.Provider,
+		TotalCost:    CalculateCost(req.Model, result.Usage.PromptTokens, result.Usage.CompletionTokens),
+		TokensPrompt: result.Usage.PromptTokens, TokensCompletion: result.Usage.CompletionTokens,
+		Latency: elapsed.Seconds(), GenerationTime: elapsed.Seconds(),
+		CreatedAt: time.Now().Format(time.RFC3339),
+		FinishReason: result.Choices[0].FinishReason, Streamed: false,
+	})
+	return &ChatCompletionWithMeta{Completion: result, Meta: ResponseMeta{}}, nil
+}
+
 func (r *Router) completeWithFallback(ctx context.Context, req ChatCompletionRequest) (*ChatCompletion, error) {
 	models := r.applyProviderPreferences(req.Models, req.Provider)
 	var lastErr error
