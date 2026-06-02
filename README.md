@@ -87,7 +87,7 @@ Set the env var and go. Models are auto-discovered from each provider's API.
 | Mistral | `MISTRAL_API_KEY` | `mistral/mistral-large-latest` |
 | Groq | `GROQ_API_KEY` | `groq/llama-3.3-70b-versatile` |
 | DeepSeek | `DEEPSEEK_API_KEY` | `deepseek/deepseek-chat` |
-| xAI | `XAI_API_KEY` | `xai/grok-3` |
+| xAI | `XAI_API_KEY` | `xai/grok-4` |
 | Together | `TOGETHER_API_KEY` | `together/meta-llama/Llama-3.3-70B-Instruct-Turbo` |
 | Fireworks | `FIREWORKS_API_KEY` | `fireworks/accounts/fireworks/models/llama-v3p3-70b-instruct` |
 | Perplexity | `PERPLEXITY_API_KEY` | `perplexity/sonar-pro` |
